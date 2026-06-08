@@ -1,4 +1,9 @@
 data/
+.env
+.env.*
+!.env.example
+dist/
+node_modules/
 .DS_Store
 __pycache__/
 *.pyc

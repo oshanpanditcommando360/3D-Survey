@@ -1,32 +1,41 @@
-# SiteMapper Scan
+# 3D Survey
 
-Dependency-free prototype for a cross-platform property scanning system.
+Phone-first property survey platform with a responsive React UI, Prisma/Supabase storage, continuous camera scanning, draft 3D model generation, and CesiumJS map placement.
 
 ## What it does now
 
-- Runs in a browser on desktop, Android, or iPhone.
-- Opens the rear camera when available.
-- Samples camera frames automatically while the user moves.
-- Shows a blue dotted coverage mesh over the live camera feed.
-- Captures browser geolocation for approximate map placement.
-- Uploads scan packages to a local backend.
-- Runs a backend draft reconstruction worker.
-- Returns draft model placement metadata for map overlay.
-- Shows a draggable 3D property model viewer.
-- Places the generated draft model on a CesiumJS 3D map using free OpenStreetMap tiles.
-- Exports a `scan-package.json` metadata file.
+- Home screen with **View Scans** and **Scan a Property** options.
+- Mobile-friendly continuous camera survey with blue dotted coverage mesh.
+- Supabase Postgres persistence through Prisma ORM.
+- Draft backend model generation with map placement metadata.
+- Responsive shadcn-style UI for phones and desktop.
+- View Scans page with CesiumJS 3D map placement using OpenStreetMap tiles.
 
 ## Run locally
 
+Create `.env` from `.env.example` and set `DATABASE_URL` plus `DIRECT_URL`.
+
 ```bash
-python3 server.py
+npm install
+npx prisma generate
+npx prisma migrate deploy
+npm run dev
 ```
 
-Open `http://localhost:4173`.
+Open `http://localhost:5173`.
 
 For phone testing, serve over HTTPS or use a local tunnel because camera access usually requires HTTPS outside localhost.
 
 The Map tab loads CesiumJS from jsDelivr and uses OpenStreetMap imagery, so internet access is required for the map library and tiles.
+
+## Database
+
+Use Supabase pooler URLs:
+
+- `DATABASE_URL`: transaction-mode pooler with `?pgbouncer=true`
+- `DIRECT_URL`: session-mode pooler for migrations
+
+Do not commit `.env`. If the database password contains special characters such as `@`, URL-encode them in the connection string.
 
 ## Production path
 
@@ -36,7 +45,7 @@ Replace the browser capture adapter with one of:
 - Native iOS ARKit and Android ARCore modules.
 - A React Native/Capacitor shell with native capture plugins.
 
-The current backend stores surveys in `data/scans`, tracks job status through `/api/scans`, and returns draft model geometry plus placement metadata from `/api/scans/:id/model`.
+The backend stores surveys in Supabase, tracks job status through `/api/scans`, and returns draft model geometry plus placement metadata from `/api/scans/:id/model`.
 
 The scan payload includes:
 

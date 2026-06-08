@@ -1,9 +1,0 @@
-{
-  "name": "SiteMapper Scan",
-  "short_name": "SiteMapper",
-  "start_url": ".",
-  "display": "standalone",
-  "background_color": "#0e1116",
-  "theme_color": "#0e1116",
-  "description": "Cross-platform property scan and 3D model viewer prototype."
-}

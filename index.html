@@ -3,102 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0e1116" />
-    <title>SiteMapper Scan</title>
-    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>3D Survey</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Widgets/widgets.css"
     />
-    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <section class="workspace" aria-label="3D property scan workspace">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">SiteMapper</p>
-            <h1>Property scan</h1>
-          </div>
-          <div class="status-pill" id="deviceStatus">Camera ready</div>
-        </header>
-
-        <section class="scan-stage" id="scanStage">
-          <video id="cameraFeed" playsinline muted></video>
-          <canvas id="scanOverlay" aria-hidden="true"></canvas>
-          <div class="camera-empty" id="cameraEmpty">
-            <strong>Start a survey</strong>
-            <span>Move the phone slowly around the site. Covered areas will fill with a blue dotted mesh.</span>
-          </div>
-        </section>
-
-        <section class="viewer-stage is-hidden" id="viewerStage" aria-label="3D model viewer">
-          <canvas id="modelViewer"></canvas>
-          <div class="viewer-hint">Drag to rotate. Pinch or scroll to zoom.</div>
-        </section>
-
-        <section class="map-stage is-hidden" id="mapStage" aria-label="3D map placement">
-          <div id="cesiumMap"></div>
-          <div class="map-hint" id="mapHint">Complete a survey to place the generated model on the map.</div>
-        </section>
-
-        <nav class="mode-tabs" aria-label="Workflow">
-          <button class="mode-tab is-active" data-mode="scan" type="button">Scan</button>
-          <button class="mode-tab" data-mode="process" type="button">Process</button>
-          <button class="mode-tab" data-mode="view" type="button">View</button>
-          <button class="mode-tab" data-mode="map" type="button">Map</button>
-        </nav>
-      </section>
-
-      <aside class="control-panel">
-        <section class="panel-section">
-          <h2>Scan package</h2>
-          <div class="metric-grid">
-            <div>
-              <span>Samples</span>
-              <strong id="frameCount">0</strong>
-            </div>
-            <div>
-              <span>Coverage</span>
-              <strong id="coverageValue">0%</strong>
-            </div>
-            <div>
-              <span>Quality</span>
-              <strong id="qualityValue">-</strong>
-            </div>
-            <div>
-              <span>Model</span>
-              <strong id="modelState">None</strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel-section">
-          <h2>Capture flow</h2>
-          <ol class="steps" id="steps">
-            <li class="is-active">Open camera</li>
-            <li>Move phone to cover site</li>
-            <li>Upload scan package</li>
-            <li>Generate 3D model</li>
-            <li>Inspect model</li>
-          </ol>
-        </section>
-
-        <section class="panel-section">
-          <h2>Actions</h2>
-          <div class="actions">
-            <button class="primary" id="startScan" type="button">Start survey</button>
-            <button id="finishScan" type="button" disabled>Survey done</button>
-            <button id="exportPackage" type="button" disabled>Export package</button>
-          </div>
-          <p class="note" id="actionNote">
-            Camera and location access need HTTPS or localhost on most phones. The backend stores survey metadata locally.
-          </p>
-        </section>
-      </aside>
-    </main>
-
+    <div id="root"></div>
     <script src="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Cesium.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
