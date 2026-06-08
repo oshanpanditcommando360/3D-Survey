@@ -289,6 +289,10 @@ function ScanProperty() {
     setStatus("Uploading");
     setNote("Uploading captured frames, coverage map, and GPS location to the Supabase-backed API.");
     try {
+      // Strip the heavy base64 image bytes before upload. The backend only
+      // needs frame metadata (pose, sharpness, coverage) for the draft model,
+      // and storing full JPEGs in Postgres bloats the request past size limits.
+      const frameMetadata = frames.map(({ image: _image, ...rest }) => rest);
       const response = await fetch("/api/scans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -297,7 +301,7 @@ function ScanProperty() {
           location,
           locationStatus,
           coverageMap: Array.from(coverageCells.values()),
-          frames,
+          frames: frameMetadata,
           summary: {
             frameCount: frames.length,
             coverage,
