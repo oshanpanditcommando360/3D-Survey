@@ -13,6 +13,7 @@ Dependency-free prototype for a cross-platform property scanning system.
 - Runs a backend draft reconstruction worker.
 - Returns draft model placement metadata for map overlay.
 - Shows a draggable 3D property model viewer.
+- Places the generated draft model on a CesiumJS 3D map using free OpenStreetMap tiles.
 - Exports a `scan-package.json` metadata file.
 
 ## Run locally
@@ -24,6 +25,8 @@ python3 server.py
 Open `http://localhost:4173`.
 
 For phone testing, serve over HTTPS or use a local tunnel because camera access usually requires HTTPS outside localhost.
+
+The Map tab loads CesiumJS from jsDelivr and uses OpenStreetMap imagery, so internet access is required for the map library and tiles.
 
 ## Production path
 
@@ -49,10 +52,16 @@ The generated model includes:
 - dimensions
 - `placement` with latitude, longitude, altitude, rotation, scale, and accuracy label
 
+Current free third-party stack:
+
+- CesiumJS for 3D map placement.
+- OpenStreetMap tiles for the basemap.
+- Canvas-based draft model viewer for the local prototype.
+
 For production, replace the draft worker in `server.py` with a reconstruction pipeline:
 
 - COLMAP or Meshroom for photogrammetry.
 - Open3D for point-cloud/depth reconstruction.
 - A queue worker for long-running jobs.
 - Object storage for input frames and generated GLB/USDZ files.
-- CesiumJS or Google Maps WebGL Overlay for real 3D map placement.
+- CesiumJS 3D Tiles rendering for real georeferenced model streaming.

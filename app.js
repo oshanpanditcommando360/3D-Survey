@@ -12,6 +12,9 @@ const state = {
   modelReady: false,
   scanId: null,
   model: null,
+  mapViewer: null,
+  mapEntity: null,
+  mapReady: false,
   rotationX: -0.45,
   rotationY: 0.65,
   zoom: 1,
@@ -24,8 +27,11 @@ const els = {
   cameraEmpty: document.querySelector("#cameraEmpty"),
   scanOverlay: document.querySelector("#scanOverlay"),
   viewerStage: document.querySelector("#viewerStage"),
+  mapStage: document.querySelector("#mapStage"),
   scanStage: document.querySelector("#scanStage"),
   modelViewer: document.querySelector("#modelViewer"),
+  cesiumMap: document.querySelector("#cesiumMap"),
+  mapHint: document.querySelector("#mapHint"),
   deviceStatus: document.querySelector("#deviceStatus"),
   frameCount: document.querySelector("#frameCount"),
   coverageValue: document.querySelector("#coverageValue"),
@@ -80,11 +86,16 @@ function setStep(index) {
 function setMode(mode) {
   state.mode = mode;
   els.tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.mode === mode));
-  els.scanStage.classList.toggle("is-hidden", mode === "view");
+  els.scanStage.classList.toggle("is-hidden", mode === "view" || mode === "map");
   els.viewerStage.classList.toggle("is-hidden", mode !== "view");
+  els.mapStage.classList.toggle("is-hidden", mode !== "map");
   if (mode === "view") {
     setStep(4);
     drawModel();
+  }
+  if (mode === "map") {
+    setStep(4);
+    updateMapPlacement();
   }
 }
 
@@ -304,6 +315,7 @@ async function finishScan() {
       : "Model is ready with approximate map placement. Rotate it and check scan completeness.";
     updateMetrics();
     setMode("view");
+    updateMapPlacement();
   } catch (error) {
     state.processing = false;
     els.deviceStatus.textContent = "Backend error";
@@ -462,6 +474,110 @@ function drawModel() {
       : `Map placement: ${placement.latitude.toFixed(5)}, ${placement.longitude.toFixed(5)}`;
     viewerContext.fillText(placementText, 18, 76);
   }
+}
+
+function modelDimensions() {
+  const dimensions = state.model?.dimensions_m;
+  return {
+    length: Math.max(1, dimensions?.length || 5),
+    width: Math.max(1, dimensions?.width || 4),
+    height: Math.max(1, dimensions?.height || 3),
+  };
+}
+
+function initMap() {
+  if (state.mapViewer) return true;
+  if (!window.Cesium) {
+    els.mapHint.textContent = "CesiumJS did not load. Check internet access, then reload to use map placement.";
+    return false;
+  }
+
+  try {
+    state.mapViewer = new Cesium.Viewer(els.cesiumMap, {
+      animation: false,
+      baseLayerPicker: false,
+      fullscreenButton: false,
+      geocoder: false,
+      homeButton: false,
+      infoBox: false,
+      navigationHelpButton: false,
+      sceneModePicker: false,
+      selectionIndicator: false,
+      timeline: false,
+      imageryProvider: new Cesium.OpenStreetMapImageryProvider({
+        url: "https://tile.openstreetmap.org/",
+      }),
+    });
+    state.mapViewer.scene.globe.depthTestAgainstTerrain = false;
+    state.mapReady = true;
+    return true;
+  } catch (error) {
+    els.mapHint.textContent = "Could not initialize the free 3D map viewer.";
+    return false;
+  }
+}
+
+function updateMapPlacement() {
+  if (!initMap()) return;
+
+  const placement = state.model?.placement;
+  if (!state.modelReady || !placement) {
+    els.mapHint.textContent = "Complete a survey to place the generated model on the map.";
+    return;
+  }
+
+  if (placement.accuracyLabel === "manual_required" || placement.latitude == null || placement.longitude == null) {
+    els.mapHint.textContent = "The model is ready, but GPS was unavailable. A manual map pin is needed before placement.";
+    return;
+  }
+
+  const { length, width, height } = modelDimensions();
+  const altitude = placement.altitude || 0;
+  const center = Cesium.Cartesian3.fromDegrees(
+    placement.longitude,
+    placement.latitude,
+    altitude + height / 2,
+  );
+  const heading = Cesium.Math.toRadians(placement.rotation || 0);
+  const orientation = Cesium.Transforms.headingPitchRollQuaternion(
+    center,
+    new Cesium.HeadingPitchRoll(heading, 0, 0),
+  );
+
+  if (state.mapEntity) {
+    state.mapViewer.entities.remove(state.mapEntity);
+  }
+
+  state.mapEntity = state.mapViewer.entities.add({
+    name: "Survey model placement",
+    position: center,
+    orientation,
+    box: {
+      dimensions: new Cesium.Cartesian3(width, length, height),
+      material: Cesium.Color.fromCssColorString("#57a6ff").withAlpha(0.52),
+      outline: true,
+      outlineColor: Cesium.Color.fromCssColorString("#39d59f"),
+    },
+    label: {
+      text: "Survey model",
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      pixelOffset: new Cesium.Cartesian2(0, -28),
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+    },
+  });
+
+  state.mapViewer.flyTo(state.mapEntity, {
+    duration: 0.8,
+    offset: new Cesium.HeadingPitchRange(
+      Cesium.Math.toRadians(25),
+      Cesium.Math.toRadians(-35),
+      Math.max(80, length * 18),
+    ),
+  });
+  els.mapHint.textContent = `Placed from phone GPS: ${placement.latitude.toFixed(5)}, ${placement.longitude.toFixed(5)}. Accuracy +/- ${Math.round(placement.horizontalAccuracyM || 0)}m.`;
 }
 
 function bindViewerControls() {

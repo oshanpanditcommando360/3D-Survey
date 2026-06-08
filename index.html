@@ -6,6 +6,10 @@
     <meta name="theme-color" content="#0e1116" />
     <title>SiteMapper Scan</title>
     <link rel="manifest" href="manifest.webmanifest" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Widgets/widgets.css"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -33,10 +37,16 @@
           <div class="viewer-hint">Drag to rotate. Pinch or scroll to zoom.</div>
         </section>
 
+        <section class="map-stage is-hidden" id="mapStage" aria-label="3D map placement">
+          <div id="cesiumMap"></div>
+          <div class="map-hint" id="mapHint">Complete a survey to place the generated model on the map.</div>
+        </section>
+
         <nav class="mode-tabs" aria-label="Workflow">
           <button class="mode-tab is-active" data-mode="scan" type="button">Scan</button>
           <button class="mode-tab" data-mode="process" type="button">Process</button>
           <button class="mode-tab" data-mode="view" type="button">View</button>
+          <button class="mode-tab" data-mode="map" type="button">Map</button>
         </nav>
       </section>
 
@@ -88,6 +98,7 @@
       </aside>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Cesium.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
