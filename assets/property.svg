@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-label="Modern property exterior">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#1e2b3f"/>
+      <stop offset="1" stop-color="#0e1116"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" x2="1">
+      <stop offset="0" stop-color="#57a6ff" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#39d59f" stop-opacity=".5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+  <path d="M0 770 C260 690 450 810 710 725 C960 644 1180 705 1600 630 L1600 1000 L0 1000 Z" fill="#101820"/>
+  <path d="M235 650 L690 420 L1160 650 L1160 820 L235 820 Z" fill="#293341"/>
+  <path d="M690 420 L1160 650 L1388 540 L920 314 Z" fill="#151c25"/>
+  <path d="M235 650 L690 420 L920 314 L470 548 Z" fill="#3a4656"/>
+  <path d="M330 672 L575 548 L575 790 L330 790 Z" fill="#202833"/>
+  <path d="M624 528 L1068 682 L1068 790 L624 790 Z" fill="#222b36"/>
+  <path d="M365 682 L535 598 L535 744 L365 744 Z" fill="url(#glass)"/>
+  <path d="M674 600 L820 648 L820 790 L674 790 Z" fill="url(#glass)"/>
+  <path d="M858 662 L1018 716 L1018 790 L858 790 Z" fill="url(#glass)"/>
+  <path d="M1185 646 L1388 548 L1388 790 L1185 790 Z" fill="#1f2832"/>
+  <path d="M1226 662 L1340 608 L1340 744 L1226 744 Z" fill="url(#glass)"/>
+  <path d="M225 820 L1398 820" stroke="#526172" stroke-width="16" stroke-linecap="round"/>
+  <g fill="#39d59f" opacity=".75">
+    <circle cx="290" cy="285" r="6"/>
+    <circle cx="1260" cy="228" r="5"/>
+    <circle cx="1040" cy="160" r="4"/>
+    <circle cx="515" cy="190" r="4"/>
+  </g>
+</svg>
