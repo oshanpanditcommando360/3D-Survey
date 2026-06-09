@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { Activity, Camera, Eye, Home, MapPinned, Rotate3d, Smartphone, Video } from "lucide-react";
 import maplibregl from "maplibre-gl";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -659,7 +660,7 @@ function MapLibreThreeMap({ model, selected }: { model: Model | null; selected: 
         <p className="font-semibold">{selected ? `Scan ${selected.id.slice(0, 8)}` : "No scan selected"}</p>
         <p className="text-sm text-muted-foreground">
           {model?.placement?.latitude
-            ? `${model.assetType === "obj" ? "ODM model" : "Draft model"} placed at ${model.placement.latitude.toFixed(5)}, ${model.placement.longitude?.toFixed(5)}`
+            ? `${model.assetType === "obj" || model.assetType === "glb" ? "ODM model" : "Draft model"} placed at ${model.placement.latitude.toFixed(5)}, ${model.placement.longitude?.toFixed(5)}`
             : "Select a completed scan with GPS placement to view it on the MapLibre map."}
         </p>
       </div>
@@ -691,7 +692,20 @@ function createThreeSurveyLayer(id: string, model: Model): maplibregl.CustomLaye
       sun.position.set(0, -70, 100).normalize();
       scene.add(sun);
 
-      if (model.assetUrl && model.assetType === "obj") {
+      if (model.assetUrl && (model.assetType === "glb" || model.assetType === "gltf")) {
+        new GLTFLoader().load(
+          model.assetUrl,
+          (gltf) => {
+            centerObjectOnGround(gltf.scene);
+            scene.add(gltf.scene);
+            map.triggerRepaint();
+          },
+          undefined,
+          () => {
+            scene.add(makeDraftBox(dims));
+          },
+        );
+      } else if (model.assetUrl && model.assetType === "obj") {
         new OBJLoader().load(
           model.assetUrl,
           (object) => {

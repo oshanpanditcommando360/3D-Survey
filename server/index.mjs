@@ -398,6 +398,13 @@ function extractModelAsset(zipPath, outputDir) {
   const extractedDir = join(outputDir, "model");
   const zip = new AdmZip(zipPath);
   zip.extractAllTo(extractedDir, true);
+  const glbPath = findFirstFile(extractedDir, /\.glb$/i);
+  if (glbPath) {
+    return {
+      assetUrl: `/${relativeStoragePath(glbPath).split("/").map(encodeURIComponent).join("/")}`,
+      assetType: "glb",
+    };
+  }
   const objPath = findFirstFile(extractedDir, /\.obj$/i);
   if (objPath) {
     return {
