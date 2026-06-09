@@ -9,6 +9,8 @@
     "dev:web": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc && vite build",
     "start": "node server/index.mjs",
+    "nodeodm:local": "docker compose up nodeodm",
+    "nodeodm:local:docker": "bash scripts/start-nodeodm-local.sh",
     "check:nodeodm": "node scripts/check-nodeodm.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

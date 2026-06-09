@@ -318,11 +318,23 @@ function ScanProperty() {
     setProcessing(true);
     setStatus("Uploading");
     setNote(
-      recordedVideo?.size
-        ? "Uploading the captured walkaround video for ODM reconstruction."
+      frames.length >= 2
+        ? "Uploading auto-captured sharp frames for local ODM reconstruction."
+        : recordedVideo?.size
+          ? "Uploading the captured walkaround video for ODM reconstruction."
         : "Uploading captured frame metadata, coverage map, and GPS location to the Supabase-backed API.",
     );
     try {
+      if (frames.length >= 2) {
+        const frameFiles = await surveyFramesToFiles(frames);
+        await uploadScanMedia(frameFiles, {
+          captureMode: "continuous-survey-frames",
+          source: "camera-auto-frames",
+          frameCount: frameFiles.length,
+        });
+        return;
+      }
+
       if (recordedVideo?.size) {
         const extension = recordedVideo.type.includes("mp4") ? "mp4" : "webm";
         const file = new File([recordedVideo], `survey-walkaround-${Date.now()}.${extension}`, {
@@ -330,7 +342,8 @@ function ScanProperty() {
         });
         await uploadScanMedia([file], {
           captureMode: "video-walkaround-media",
-          startedFromCamera: true,
+          source: "camera-recorder",
+          frameCount: frames.length,
         });
         return;
       }
@@ -385,7 +398,8 @@ function ScanProperty() {
     try {
       await uploadScanMedia(mediaFiles, {
         captureMode: "media-upload",
-        startedFromCamera: false,
+        source: "file-picker",
+        frameCount: mediaFiles.length,
       });
       setMediaFiles([]);
     } catch (error) {
@@ -397,14 +411,14 @@ function ScanProperty() {
     }
   }
 
-  async function uploadScanMedia(files: File[], metadata: { captureMode: string; startedFromCamera: boolean }) {
+  async function uploadScanMedia(files: File[], metadata: { captureMode: string; source: string; frameCount: number }) {
     const form = new FormData();
     for (const file of files) form.append("media", file);
     form.append("captureMode", metadata.captureMode);
-    form.append("source", metadata.startedFromCamera ? "camera-recorder" : "file-picker");
+    form.append("source", metadata.source);
     form.append("coverage", String(coverage));
     form.append("durationSec", String(elapsed));
-    form.append("frameCount", String(frames.length));
+    form.append("frameCount", String(metadata.frameCount));
     if (location?.latitude != null) form.append("latitude", String(location.latitude));
     if (location?.longitude != null) form.append("longitude", String(location.longitude));
     if (location?.altitude != null) form.append("altitude", String(location.altitude));
@@ -869,6 +883,17 @@ async function waitForScan(scanId: string, maxAttempts = 20): Promise<ScanRecord
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error("Model processing timed out");
+}
+
+async function surveyFramesToFiles(frames: SurveyFrame[]) {
+  return Promise.all(
+    frames.map(async (frame, index) => {
+      const response = await fetch(frame.image);
+      const blob = await response.blob();
+      const sequence = String(index + 1).padStart(4, "0");
+      return new File([blob], `survey-frame-${sequence}.jpg`, { type: "image/jpeg" });
+    }),
+  );
 }
 
 function startSurveyVideoRecorder(
