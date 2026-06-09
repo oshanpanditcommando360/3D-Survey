@@ -3,7 +3,7 @@ import "dotenv/config";
 const baseUrl = (process.argv[2] || process.env.NODEODM_URL || "").replace(/\/$/, "");
 
 if (!baseUrl) {
-  console.error("Usage: NODEODM_URL=http://host:3001 npm run check:nodeodm");
+  console.error("Usage: NODEODM_URL=http://host:3002 npm run check:nodeodm");
   process.exit(1);
 }
 
