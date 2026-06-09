@@ -78,6 +78,7 @@ const recommendedFrames = 80;
 const frameWidth = 960;
 const frameQuality = 0.7;
 const blurThreshold = 11;
+const odmDisplayScale = 4;
 
 function App() {
   const [screen, setScreen] = React.useState<Screen>("home");
@@ -801,7 +802,7 @@ function fitObjectToSurveyFootprint(object: THREE.Object3D, dims: { length: numb
   const bounds = new THREE.Box3().setFromObject(object);
   const size = bounds.getSize(new THREE.Vector3());
   const currentMax = Math.max(size.x, size.y, size.z);
-  const targetMax = Math.max(dims.length, dims.width, dims.height);
+  const targetMax = Math.max(dims.length, dims.width, dims.height) * odmDisplayScale;
   if (Number.isFinite(currentMax) && currentMax > 0 && Number.isFinite(targetMax) && targetMax > 0) {
     object.scale.multiplyScalar(targetMax / currentMax);
     centerObjectOnGround(object);
