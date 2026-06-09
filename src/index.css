@@ -70,7 +70,7 @@
 .scan-video,
 .scan-canvas,
 .model-canvas,
-.cesium-map {
+.maplibre-map {
   position: absolute;
   inset: 0;
   width: 100%;

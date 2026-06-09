@@ -1,9 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Activity, Camera, Eye, Home, MapPinned, Rotate3d, Smartphone, Video } from "lucide-react";
+import maplibregl from "maplibre-gl";
+import * as THREE from "three";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import "maplibre-gl/dist/maplibre-gl.css";
 import "./index.css";
 
 type Screen = "home" | "scan" | "scans";
@@ -18,6 +22,11 @@ type ScanRecord = {
   latitude: number | null;
   longitude: number | null;
   model_url: string | null;
+  model_asset_url: string | null;
+  model_asset_type: string | null;
+  reconstruction_engine: string | null;
+  node_odm_task_id: string | null;
+  error_message: string | null;
   created_at: string;
   completed_at: string | null;
 };
@@ -51,6 +60,9 @@ type Model = {
     accuracyLabel: string;
     horizontalAccuracyM?: number;
   };
+  assetUrl?: string | null;
+  assetType?: string | null;
+  nodeOdmTaskId?: string | null;
   vertices: number[][];
   faces: { indexes: number[]; color: string }[];
 };
@@ -116,7 +128,7 @@ function HomeScreen({ setScreen }: { setScreen: (screen: Screen) => void }) {
           </h2>
           <p className="max-w-2xl text-base leading-7 text-muted-foreground">
             Slowly film the building with your phone. The app pulls sharp, overlapping frames automatically,
-            stores the scan in Supabase, and previews the result on a free Cesium / OpenStreetMap view.
+            stores the scan in Supabase, reconstructs with NodeODM when configured, and places the result on a free MapLibre / Three.js map.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -134,7 +146,7 @@ function HomeScreen({ setScreen }: { setScreen: (screen: Screen) => void }) {
         {[
           ["Film, don't snap", "Just record a slow walk-around. Frames are captured for you—no photo button."],
           ["Sharp frames only", "Blurry frames are skipped so the 3D reconstruction has clean input."],
-          ["Map placement", "Completed scans appear on a Cesium 3D map using the captured GPS location."],
+          ["Map placement", "Completed scans appear on a MapLibre map using Three.js and the captured GPS location."],
         ].map(([title, body]) => (
           <Card key={title} className="soft-card">
             <CardHeader>
@@ -170,6 +182,8 @@ function ScanProperty() {
   const [location, setLocation] = React.useState<SurveyLocation | null>(null);
   const [locationStatus, setLocationStatus] = React.useState("pending");
   const [model, setModel] = React.useState<Model | null>(null);
+  const [mediaFiles, setMediaFiles] = React.useState<File[]>([]);
+  const [uploadingMedia, setUploadingMedia] = React.useState(false);
 
   const coverage = Math.min(100, Math.round((coverageCells.size / (rows * cols)) * 100));
   const canFinish = recording && frames.length >= minFrames && !processing;
@@ -186,6 +200,10 @@ function ScanProperty() {
     () => () => teardown(streamRef, timerRef, clockRef, orientationHandlerRef, setRecording),
     [],
   );
+
+  React.useEffect(() => {
+    getLocation(setLocation, setLocationStatus);
+  }, []);
 
   async function startRecording() {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -327,6 +345,51 @@ function ScanProperty() {
     }
   }
 
+  async function uploadMediaForOdm() {
+    if (mediaFiles.length === 0) {
+      setNote("Attach photos or videos first.");
+      return;
+    }
+    setUploadingMedia(true);
+    setProcessing(true);
+    setStatus("Uploading media");
+    setNote("Uploading media to the backend. Videos will be converted into ODM image frames.");
+    try {
+      const form = new FormData();
+      for (const file of mediaFiles) form.append("media", file);
+      if (location?.latitude != null) form.append("latitude", String(location.latitude));
+      if (location?.longitude != null) form.append("longitude", String(location.longitude));
+      if (location?.altitude != null) form.append("altitude", String(location.altitude));
+      if (location?.accuracy != null) form.append("accuracy", String(location.accuracy));
+
+      const response = await fetch("/api/scans/upload", {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Media upload failed");
+      }
+      const scan = await response.json();
+      setStatus("Reconstructing");
+      setNote("ODM job started. This can take a while for large properties.");
+      const ready = await waitForScan(scan.id, 90);
+      if (ready.status === "failed") throw new Error(ready.error_message || "ODM reconstruction failed");
+      const modelResponse = await fetch(`/api/scans/${ready.id}/model`);
+      if (!modelResponse.ok) throw new Error("Model is not ready");
+      setModel(await modelResponse.json());
+      setStatus("Model ready");
+      setNote("ODM output is ready. Open View Scans to see it on the MapLibre map.");
+      setMediaFiles([]);
+    } catch (error) {
+      setStatus("Backend error");
+      setNote(error instanceof Error ? error.message : "Media upload or ODM processing failed.");
+    } finally {
+      setUploadingMedia(false);
+      setProcessing(false);
+    }
+  }
+
   const enough = frames.length >= recommendedFrames;
 
   return (
@@ -389,6 +452,29 @@ function ScanProperty() {
                 Keep filming — capture at least {minFrames} frames before building.
               </p>
             )}
+          </CardContent>
+        </Card>
+        <Card className="soft-card">
+          <CardHeader>
+            <CardTitle>ODM media upload</CardTitle>
+            <CardDescription>Attach property photos/videos for NodeODM reconstruction.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <input
+              className="w-full rounded-md border border-border bg-background p-2 text-sm"
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              onChange={(event) => setMediaFiles(Array.from(event.target.files || []))}
+            />
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{mediaFiles.length} files selected</span>
+              <span>Photos or slow walkaround videos</span>
+            </div>
+            <Button variant="outline" disabled={mediaFiles.length === 0 || uploadingMedia} onClick={uploadMediaForOdm}>
+              <Rotate3d className="h-4 w-4" />
+              Upload &amp; run ODM
+            </Button>
           </CardContent>
         </Card>
         <Card className="soft-card">
@@ -460,76 +546,172 @@ function ViewScans() {
         ))}
       </aside>
       <section className="soft-card min-h-[72svh] overflow-hidden rounded-2xl border border-border bg-card">
-        <CesiumMap model={model} selected={selected} />
+        <MapLibreThreeMap model={model} selected={selected} />
       </section>
     </main>
   );
 }
 
-function CesiumMap({ model, selected }: { model: Model | null; selected: ScanRecord | null }) {
+function MapLibreThreeMap({ model, selected }: { model: Model | null; selected: ScanRecord | null }) {
   const mapRef = React.useRef<HTMLDivElement | null>(null);
-  const viewerRef = React.useRef<any>(null);
-  const entityRef = React.useRef<any>(null);
+  const mapInstanceRef = React.useRef<maplibregl.Map | null>(null);
+  const layerIdRef = React.useRef("survey-three-layer");
 
   React.useEffect(() => {
-    if (!mapRef.current || viewerRef.current || !window.Cesium) return;
-    const Cesium = window.Cesium;
-    viewerRef.current = new Cesium.Viewer(mapRef.current, {
-      animation: false,
-      baseLayerPicker: false,
-      fullscreenButton: false,
-      geocoder: false,
-      homeButton: false,
-      infoBox: false,
-      navigationHelpButton: false,
-      sceneModePicker: false,
-      selectionIndicator: false,
-      timeline: false,
-      imageryProvider: new Cesium.OpenStreetMapImageryProvider({ url: "https://tile.openstreetmap.org/" }),
+    if (!mapRef.current || mapInstanceRef.current) return;
+    mapInstanceRef.current = new maplibregl.Map({
+      container: mapRef.current,
+      style: "https://tiles.openfreemap.org/styles/bright",
+      center: [77.209, 28.6139],
+      zoom: 16,
+      pitch: 60,
+      bearing: -20,
+      canvasContextAttributes: { antialias: true },
     });
+    mapInstanceRef.current.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+    return () => {
+      mapInstanceRef.current?.remove();
+      mapInstanceRef.current = null;
+    };
   }, []);
 
   React.useEffect(() => {
-    const Cesium = window.Cesium;
-    const viewer = viewerRef.current;
+    const map = mapInstanceRef.current;
     const placement = model?.placement;
-    if (!Cesium || !viewer || !placement?.latitude || !placement.longitude) return;
-    if (entityRef.current) viewer.entities.remove(entityRef.current);
-    const dims = model?.dimensions_m || { length: 5, width: 4, height: 3 };
-    const center = Cesium.Cartesian3.fromDegrees(placement.longitude, placement.latitude, (placement.altitude || 0) + dims.height / 2);
-    entityRef.current = viewer.entities.add({
-      name: "Survey model placement",
-      position: center,
-      orientation: Cesium.Transforms.headingPitchRollQuaternion(
-        center,
-        new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(placement.rotation || 0), 0, 0),
-      ),
-      box: {
-        dimensions: new Cesium.Cartesian3(dims.width, dims.length, dims.height),
-        material: Cesium.Color.fromCssColorString("#dc2626").withAlpha(0.55),
-        outline: true,
-        outlineColor: Cesium.Color.fromCssColorString("#ef4444"),
-      },
-    });
-    viewer.flyTo(entityRef.current, {
-      duration: 0.8,
-      offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(25), Cesium.Math.toRadians(-35), 90),
-    });
+    if (!map || !model || !placement?.latitude || !placement.longitude) return;
+
+    const addLayer = () => {
+      if (map.getLayer(layerIdRef.current)) map.removeLayer(layerIdRef.current);
+      const layer = createThreeSurveyLayer(layerIdRef.current, model);
+      map.addLayer(layer);
+      map.flyTo({
+        center: [placement.longitude ?? 0, placement.latitude ?? 0],
+        zoom: 18,
+        pitch: 65,
+        bearing: placement.rotation || -20,
+        speed: 0.8,
+      });
+    };
+
+    if (map.loaded()) addLayer();
+    else map.once("load", addLayer);
   }, [model]);
 
   return (
     <div className="relative h-full min-h-[72svh]">
-      <div ref={mapRef} className="cesium-map" />
+      <div ref={mapRef} className="maplibre-map" />
       <div className="absolute bottom-4 left-4 right-4 rounded-xl border border-border bg-background/85 p-4 backdrop-blur sm:right-auto sm:max-w-lg">
         <p className="font-semibold">{selected ? `Scan ${selected.id.slice(0, 8)}` : "No scan selected"}</p>
         <p className="text-sm text-muted-foreground">
           {model?.placement?.latitude
-            ? `Placed from phone GPS at ${model.placement.latitude.toFixed(5)}, ${model.placement.longitude?.toFixed(5)}`
-            : "Select a completed scan with GPS placement to view it on the map."}
+            ? `${model.assetType === "obj" ? "ODM model" : "Draft model"} placed at ${model.placement.latitude.toFixed(5)}, ${model.placement.longitude?.toFixed(5)}`
+            : "Select a completed scan with GPS placement to view it on the MapLibre map."}
         </p>
       </div>
     </div>
   );
+}
+
+function createThreeSurveyLayer(id: string, model: Model): maplibregl.CustomLayerInterface {
+  const placement = model.placement;
+  const dims = model.dimensions_m || { length: 5, width: 4, height: 3 };
+  const origin: [number, number] = [placement?.longitude || 0, placement?.latitude || 0];
+  const altitude = placement?.altitude || 0;
+  const rotation = placement?.rotation || 0;
+  const mercator = maplibregl.MercatorCoordinate.fromLngLat(origin, altitude);
+  const scale = mercator.meterInMercatorCoordinateUnits();
+  let camera: THREE.Camera;
+  let scene: THREE.Scene;
+  let renderer: THREE.WebGLRenderer;
+
+  return {
+    id,
+    type: "custom",
+    renderingMode: "3d",
+    onAdd(map, gl) {
+      camera = new THREE.Camera();
+      scene = new THREE.Scene();
+      scene.add(new THREE.AmbientLight(0xffffff, 1.8));
+      const sun = new THREE.DirectionalLight(0xffffff, 2.6);
+      sun.position.set(0, -70, 100).normalize();
+      scene.add(sun);
+
+      if (model.assetUrl && model.assetType === "obj") {
+        new OBJLoader().load(
+          model.assetUrl,
+          (object) => {
+            object.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.material = new THREE.MeshStandardMaterial({
+                  color: "#ef4444",
+                  roughness: 0.75,
+                  metalness: 0.05,
+                });
+              }
+            });
+            centerObjectOnGround(object);
+            scene.add(object);
+            map.triggerRepaint();
+          },
+          undefined,
+          () => {
+            scene.add(makeDraftBox(dims));
+          },
+        );
+      } else {
+        scene.add(makeDraftBox(dims));
+      }
+
+      renderer = new THREE.WebGLRenderer({
+        canvas: map.getCanvas(),
+        context: gl,
+        antialias: true,
+      });
+      renderer.autoClear = false;
+    },
+    render(gl, input) {
+      const matrix = Array.isArray(input)
+        ? input
+        : input.defaultProjectionData.mainMatrix;
+      const translate = new THREE.Matrix4().makeTranslation(mercator.x, mercator.y, mercator.z);
+      const rotateX = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+      const rotateZ = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(rotation));
+      const scaleMatrix = new THREE.Matrix4().makeScale(scale, -scale, scale);
+      const modelMatrix = translate.multiply(scaleMatrix).multiply(rotateX).multiply(rotateZ);
+      camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix).multiply(modelMatrix);
+      renderer.resetState();
+      renderer.render(scene, camera);
+      gl.flush();
+    },
+  };
+}
+
+function makeDraftBox(dims: { length: number; width: number; height: number }) {
+  const geometry = new THREE.BoxGeometry(dims.width, dims.length, dims.height);
+  geometry.translate(0, 0, dims.height / 2);
+  const material = new THREE.MeshStandardMaterial({
+    color: "#dc2626",
+    transparent: true,
+    opacity: 0.58,
+    roughness: 0.7,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: "#111827", linewidth: 1 }),
+  );
+  const group = new THREE.Group();
+  group.add(mesh);
+  group.add(edges);
+  return group;
+}
+
+function centerObjectOnGround(object: THREE.Object3D) {
+  const bounds = new THREE.Box3().setFromObject(object);
+  const center = bounds.getCenter(new THREE.Vector3());
+  object.position.sub(center);
+  const groundedBounds = new THREE.Box3().setFromObject(object);
+  object.position.z -= groundedBounds.min.z;
 }
 
 function Metric({ label, value, highlight }: { label: string; value: React.ReactNode; highlight?: boolean }) {
@@ -637,13 +819,14 @@ function getLocation(
   );
 }
 
-async function waitForScan(scanId: string): Promise<ScanRecord> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+async function waitForScan(scanId: string, maxAttempts = 20): Promise<ScanRecord> {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const response = await fetch(`/api/scans/${scanId}`);
     if (!response.ok) throw new Error("Could not read scan status");
     const scan = await response.json();
+    if (scan.status === "failed") return scan;
     if (scan.status === "complete") return scan;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error("Model processing timed out");
 }

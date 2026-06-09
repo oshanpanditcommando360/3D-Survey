@@ -31,10 +31,20 @@ model Scan {
   coverageMap    Json?
   summary        Json?
   model          Json?
+  media          Json?
+  preparedImages Json?
+  storagePath    String?
+  outputPath     String?
+  modelAssetUrl  String?
+  modelAssetType String?
+  nodeOdmTaskId  String?
+  reconstructionEngine String?
+  errorMessage   String?
   createdAt      DateTime   @default(now())
   completedAt    DateTime?
   updatedAt      DateTime   @updatedAt
 
   @@index([status])
   @@index([createdAt])
+  @@index([nodeOdmTaskId])
 }
