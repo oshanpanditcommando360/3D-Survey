@@ -394,12 +394,13 @@ function ScanProperty() {
     setUploadingMedia(true);
     setProcessing(true);
     setStatus("Uploading media");
-    setNote("Uploading media to the backend. Videos will be converted into ODM image frames.");
+    setNote("Preparing media. Videos are converted to JPEG frames in the browser for local ODM.");
     try {
-      await uploadScanMedia(mediaFiles, {
-        captureMode: "media-upload",
+      const preparedFiles = await prepareSelectedMediaForUpload(mediaFiles, setNote);
+      await uploadScanMedia(preparedFiles, {
+        captureMode: "media-upload-frames",
         source: "file-picker",
-        frameCount: mediaFiles.length,
+        frameCount: preparedFiles.length,
       });
       setMediaFiles([]);
     } catch (error) {
@@ -894,6 +895,94 @@ async function surveyFramesToFiles(frames: SurveyFrame[]) {
       return new File([blob], `survey-frame-${sequence}.jpg`, { type: "image/jpeg" });
     }),
   );
+}
+
+async function prepareSelectedMediaForUpload(files: File[], setNote: (note: string) => void) {
+  const output: File[] = [];
+  for (const file of files) {
+    if (file.type.startsWith("video/")) {
+      setNote(`Extracting frames from ${file.name} before upload.`);
+      output.push(...await videoFileToFrameFiles(file));
+    } else {
+      output.push(file);
+    }
+  }
+  if (output.length < 2) {
+    throw new Error("ODM needs at least 2 images. Use a longer video or add more photos.");
+  }
+  return output;
+}
+
+async function videoFileToFrameFiles(file: File) {
+  const video = document.createElement("video");
+  const objectUrl = URL.createObjectURL(file);
+  video.src = objectUrl;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+
+  try {
+    await waitForVideoEvent(video, "loadedmetadata");
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    if (duration <= 0) throw new Error(`Could not read duration for ${file.name}`);
+
+    const canvas = document.createElement("canvas");
+    const width = frameWidth;
+    const height = Math.max(1, Math.round((video.videoHeight / video.videoWidth) * width));
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not prepare video frame canvas");
+
+    const frameStepSeconds = 1;
+    const maxVideoFrames = 180;
+    const frameCount = Math.min(maxVideoFrames, Math.max(2, Math.floor(duration / frameStepSeconds)));
+    const frames: File[] = [];
+    for (let index = 0; index < frameCount; index += 1) {
+      video.currentTime = Math.min(duration - 0.05, index * frameStepSeconds);
+      await waitForVideoEvent(video, "seeked");
+      context.drawImage(video, 0, 0, width, height);
+      const blob = await canvasToBlob(canvas);
+      frames.push(new File([blob], `${file.name.replace(/\.[^.]+$/, "")}-frame-${String(index + 1).padStart(4, "0")}.jpg`, {
+        type: "image/jpeg",
+      }));
+    }
+    return frames;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function waitForVideoEvent(video: HTMLVideoElement, eventName: "loadedmetadata" | "seeked") {
+  return new Promise<void>((resolve, reject) => {
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Video frame extraction failed"));
+    };
+    const cleanup = () => {
+      video.removeEventListener(eventName, onReady);
+      video.removeEventListener("error", onError);
+    };
+    video.addEventListener(eventName, onReady, { once: true });
+    video.addEventListener("error", onError, { once: true });
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Could not encode video frame"));
+      },
+      "image/jpeg",
+      frameQuality,
+    );
+  });
 }
 
 function startSurveyVideoRecorder(

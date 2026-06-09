@@ -30,7 +30,7 @@ For phone testing, serve over HTTPS or use a local tunnel because camera access 
 
 The View Scans map uses MapLibre GL JS with the free OpenFreeMap style and Three.js custom layers.
 
-The normal phone scan flow uploads auto-captured JPEG frames, so local ODM testing does not require `ffmpeg`. Manually uploaded video files still require `ffmpeg` on the backend machine so frames can be extracted before ODM submission.
+The normal phone scan flow uploads auto-captured JPEG frames. The manual media uploader also converts selected videos to JPEG frames in the browser before upload, so local ODM testing through the UI does not require `ffmpeg`. Direct API uploads of raw videos still require `ffmpeg` on the backend machine.
 
 ## Database
 
