@@ -52,7 +52,7 @@ npm run nodeodm:local
 Then set:
 
 ```env
-NODEODM_URL="http://localhost:3000"
+NODEODM_URL="http://localhost:3001"
 ```
 
 Verify the worker before sending scans:

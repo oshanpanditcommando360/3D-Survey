@@ -3,6 +3,6 @@ services:
     image: ${NODEODM_IMAGE:-opendronemap/nodeodm}
     container_name: 3d-survey-nodeodm
     ports:
-      - "3000:3000"
+      - "${NODEODM_PORT:-3001}:3000"
     volumes:
       - ./storage/nodeodm:/var/www/data

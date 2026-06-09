@@ -34,13 +34,13 @@ For local testing with Docker:
 
 ```bash
 bash scripts/start-nodeodm-local.sh
-NODEODM_URL="http://localhost:3000" npm run dev
+NODEODM_URL="http://localhost:3001" npm run dev
 ```
 
 Verify the worker:
 
 ```bash
-NODEODM_URL="http://localhost:3000" npm run check:nodeodm
+NODEODM_URL="http://localhost:3001" npm run check:nodeodm
 ```
 
 For RunPod, use the public HTTP endpoint shown by RunPod:
