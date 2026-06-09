@@ -20,6 +20,8 @@ Attach the 30 GB network volume to persist ODM task data.
 
 The app backend also needs `ffmpeg` if users upload videos or use the phone camera recording flow. NodeODM receives still frames, not raw video.
 
+Use [runpod-launch-checklist.md](runpod-launch-checklist.md) when creating the replacement pod.
+
 ## App Environment
 
 Set the backend to talk to the NodeODM endpoint:
