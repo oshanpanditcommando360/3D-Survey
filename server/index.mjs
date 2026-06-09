@@ -307,7 +307,10 @@ function runCommand(command, args) {
     child.stderr.on("data", (data) => {
       stderr += data.toString();
     });
-    child.on("error", (error) => reject(error));
+    child.on("error", (error) => {
+      const missingTool = error?.code === "ENOENT";
+      reject(new Error(missingTool ? `${command} is required but is not installed or not in PATH` : error.message));
+    });
     child.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`${command} failed: ${stderr.slice(-1200)}`));
@@ -428,7 +431,12 @@ function delay(ms) {
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "3d-survey-api" });
+  res.json({
+    ok: true,
+    service: "3d-survey-api",
+    nodeOdmConfigured: Boolean(nodeOdmUrl),
+    storageDir: relativeStoragePath(storageDir),
+  });
 });
 
 app.get("/api/scans", async (_req, res, next) => {
@@ -504,12 +512,14 @@ app.post("/api/scans/upload", upload.array("media", 250), async (req, res, next)
     const longitude = req.body.longitude === "" ? null : Number(req.body.longitude);
     const altitude = req.body.altitude === "" ? null : Number(req.body.altitude);
     const accuracy = req.body.accuracy === "" ? null : Number(req.body.accuracy);
+    const captureMode = typeof req.body.captureMode === "string" ? req.body.captureMode : "media-upload";
+    const coverage = Number(req.body.coverage);
     const scan = await prisma.scan.create({
       data: {
         id: scanId,
-        frameCount: files.length,
-        coverage: 0,
-        captureMode: "media-upload",
+        frameCount: Number.isFinite(Number(req.body.frameCount)) ? Number(req.body.frameCount) : files.length,
+        coverage: Number.isFinite(coverage) ? coverage : 0,
+        captureMode,
         locationStatus: Number.isFinite(latitude) && Number.isFinite(longitude) ? "captured" : "manual_required",
         latitude: Number.isFinite(latitude) ? latitude : null,
         longitude: Number.isFinite(longitude) ? longitude : null,
@@ -519,7 +529,11 @@ app.post("/api/scans/upload", upload.array("media", 250), async (req, res, next)
         media,
         storagePath: scanStoragePath,
         reconstructionEngine: nodeOdmUrl ? "nodeodm" : "local-draft",
-        summary: { uploadCount: files.length },
+        summary: {
+          uploadCount: files.length,
+          source: typeof req.body.source === "string" ? req.body.source : "file-picker",
+          durationSec: Number.isFinite(Number(req.body.durationSec)) ? Number(req.body.durationSec) : null,
+        },
       },
     });
     processMediaScan(scan.id);

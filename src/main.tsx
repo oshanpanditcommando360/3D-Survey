@@ -167,6 +167,8 @@ function ScanProperty() {
   const timerRef = React.useRef<number | null>(null);
   const clockRef = React.useRef<number | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = React.useRef<Blob[]>([]);
   const orientationRef = React.useRef<Orientation>({ alpha: null, beta: null, gamma: null });
   const orientationHandlerRef = React.useRef<((event: DeviceOrientationEvent) => void) | null>(null);
   const skipRef = React.useRef(0);
@@ -197,7 +199,10 @@ function ScanProperty() {
   }, [model]);
 
   React.useEffect(
-    () => () => teardown(streamRef, timerRef, clockRef, orientationHandlerRef, setRecording),
+    () => () => {
+      void stopRecorder(mediaRecorderRef, recordedChunksRef);
+      teardown(streamRef, timerRef, clockRef, orientationHandlerRef, setRecording);
+    },
     [],
   );
 
@@ -220,6 +225,7 @@ function ScanProperty() {
     setElapsed(0);
     setSkipped(0);
     skipRef.current = 0;
+    stopRecorder(mediaRecorderRef, recordedChunksRef);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -233,7 +239,12 @@ function ScanProperty() {
       }
       setRecording(true);
       setStatus("Recording");
-      setNote("Walk slowly. Keep the building in frame and circle it fully. Capture every side and a few heights.");
+      const recordingVideo = startSurveyVideoRecorder(stream, mediaRecorderRef, recordedChunksRef);
+      setNote(
+        recordingVideo
+          ? "Walk slowly. Keep the building in frame. Survey Done uploads this video for ODM reconstruction."
+          : "Walk slowly. This browser cannot record video, so Survey Done will create a draft placement model.",
+      );
       startTimeRef.current = Date.now();
       getLocation(setLocation, setLocationStatus);
       startOrientation(orientationRef, orientationHandlerRef);
@@ -302,11 +313,28 @@ function ScanProperty() {
   }
 
   async function finishRecording() {
+    const recordedVideo = await stopRecorder(mediaRecorderRef, recordedChunksRef);
     teardown(streamRef, timerRef, clockRef, orientationHandlerRef, setRecording);
     setProcessing(true);
     setStatus("Uploading");
-    setNote("Uploading captured frames, coverage map, and GPS location to the Supabase-backed API.");
+    setNote(
+      recordedVideo?.size
+        ? "Uploading the captured walkaround video for ODM reconstruction."
+        : "Uploading captured frame metadata, coverage map, and GPS location to the Supabase-backed API.",
+    );
     try {
+      if (recordedVideo?.size) {
+        const extension = recordedVideo.type.includes("mp4") ? "mp4" : "webm";
+        const file = new File([recordedVideo], `survey-walkaround-${Date.now()}.${extension}`, {
+          type: recordedVideo.type || `video/${extension}`,
+        });
+        await uploadScanMedia([file], {
+          captureMode: "video-walkaround-media",
+          startedFromCamera: true,
+        });
+        return;
+      }
+
       // Strip the heavy base64 image bytes before upload. The backend only
       // needs frame metadata (pose, sharpness, coverage) for the draft model,
       // and storing full JPEGs in Postgres bloats the request past size limits.
@@ -336,7 +364,7 @@ function ScanProperty() {
       if (!modelResponse.ok) throw new Error("Model is not ready");
       setModel(await modelResponse.json());
       setStatus("Model ready");
-      setNote("Model generated. View Scans shows it on the 3D map.");
+      setNote("Draft model generated. View Scans shows it on the 3D map.");
     } catch (error) {
       setStatus("Backend error");
       setNote(error instanceof Error ? error.message : "Backend upload or processing failed.");
@@ -355,31 +383,10 @@ function ScanProperty() {
     setStatus("Uploading media");
     setNote("Uploading media to the backend. Videos will be converted into ODM image frames.");
     try {
-      const form = new FormData();
-      for (const file of mediaFiles) form.append("media", file);
-      if (location?.latitude != null) form.append("latitude", String(location.latitude));
-      if (location?.longitude != null) form.append("longitude", String(location.longitude));
-      if (location?.altitude != null) form.append("altitude", String(location.altitude));
-      if (location?.accuracy != null) form.append("accuracy", String(location.accuracy));
-
-      const response = await fetch("/api/scans/upload", {
-        method: "POST",
-        body: form,
+      await uploadScanMedia(mediaFiles, {
+        captureMode: "media-upload",
+        startedFromCamera: false,
       });
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Media upload failed");
-      }
-      const scan = await response.json();
-      setStatus("Reconstructing");
-      setNote("ODM job started. This can take a while for large properties.");
-      const ready = await waitForScan(scan.id, 90);
-      if (ready.status === "failed") throw new Error(ready.error_message || "ODM reconstruction failed");
-      const modelResponse = await fetch(`/api/scans/${ready.id}/model`);
-      if (!modelResponse.ok) throw new Error("Model is not ready");
-      setModel(await modelResponse.json());
-      setStatus("Model ready");
-      setNote("ODM output is ready. Open View Scans to see it on the MapLibre map.");
       setMediaFiles([]);
     } catch (error) {
       setStatus("Backend error");
@@ -388,6 +395,39 @@ function ScanProperty() {
       setUploadingMedia(false);
       setProcessing(false);
     }
+  }
+
+  async function uploadScanMedia(files: File[], metadata: { captureMode: string; startedFromCamera: boolean }) {
+    const form = new FormData();
+    for (const file of files) form.append("media", file);
+    form.append("captureMode", metadata.captureMode);
+    form.append("source", metadata.startedFromCamera ? "camera-recorder" : "file-picker");
+    form.append("coverage", String(coverage));
+    form.append("durationSec", String(elapsed));
+    form.append("frameCount", String(frames.length));
+    if (location?.latitude != null) form.append("latitude", String(location.latitude));
+    if (location?.longitude != null) form.append("longitude", String(location.longitude));
+    if (location?.altitude != null) form.append("altitude", String(location.altitude));
+    if (location?.accuracy != null) form.append("accuracy", String(location.accuracy));
+
+    const response = await fetch("/api/scans/upload", {
+      method: "POST",
+      body: form,
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || "Media upload failed");
+    }
+    const scan = await response.json();
+    setStatus("Reconstructing");
+    setNote("ODM job started. Large properties can take a while; the scan also appears under View Scans.");
+    const ready = await waitForScan(scan.id, 900);
+    if (ready.status === "failed") throw new Error(ready.error_message || "ODM reconstruction failed");
+    const modelResponse = await fetch(`/api/scans/${ready.id}/model`);
+    if (!modelResponse.ok) throw new Error("Model is not ready");
+    setModel(await modelResponse.json());
+    setStatus("Model ready");
+    setNote("ODM output is ready. Open View Scans to see it on the MapLibre map.");
   }
 
   const enough = frames.length >= recommendedFrames;
@@ -829,6 +869,59 @@ async function waitForScan(scanId: string, maxAttempts = 20): Promise<ScanRecord
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error("Model processing timed out");
+}
+
+function startSurveyVideoRecorder(
+  stream: MediaStream,
+  recorderRef: React.MutableRefObject<MediaRecorder | null>,
+  chunksRef: React.MutableRefObject<Blob[]>,
+) {
+  if (typeof MediaRecorder === "undefined") return false;
+  const mimeType = [
+    "video/mp4;codecs=h264",
+    "video/mp4",
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+  ].find((type) => MediaRecorder.isTypeSupported(type));
+  try {
+    chunksRef.current = [];
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunksRef.current.push(event.data);
+    };
+    recorder.start(1000);
+    recorderRef.current = recorder;
+    return true;
+  } catch {
+    recorderRef.current = null;
+    chunksRef.current = [];
+    return false;
+  }
+}
+
+function stopRecorder(
+  recorderRef: React.MutableRefObject<MediaRecorder | null>,
+  chunksRef: React.MutableRefObject<Blob[]>,
+) {
+  const recorder = recorderRef.current;
+  if (!recorder) return Promise.resolve(null);
+  if (recorder.state === "inactive") {
+    const chunks = chunksRef.current;
+    recorderRef.current = null;
+    chunksRef.current = [];
+    return Promise.resolve(chunks.length ? new Blob(chunks, { type: recorder.mimeType || "video/webm" }) : null);
+  }
+  return new Promise<Blob | null>((resolve) => {
+    recorder.onstop = () => {
+      const chunks = chunksRef.current;
+      recorderRef.current = null;
+      chunksRef.current = [];
+      resolve(chunks.length ? new Blob(chunks, { type: recorder.mimeType || "video/webm" }) : null);
+    };
+    recorder.requestData();
+    recorder.stop();
+  });
 }
 
 function teardown(
