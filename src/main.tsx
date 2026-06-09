@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { Activity, Camera, Eye, Home, MapPinned, Rotate3d, Smartphone, Video } from "lucide-react";
 import maplibregl from "maplibre-gl";
 import * as THREE from "three";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { Badge } from "@/components/ui/badge";
@@ -693,7 +694,11 @@ function createThreeSurveyLayer(id: string, model: Model): maplibregl.CustomLaye
       scene.add(sun);
 
       if (model.assetUrl && (model.assetType === "glb" || model.assetType === "gltf")) {
-        new GLTFLoader().load(
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath("/draco/");
+        const gltfLoader = new GLTFLoader();
+        gltfLoader.setDRACOLoader(dracoLoader);
+        gltfLoader.load(
           model.assetUrl,
           (gltf) => {
             centerObjectOnGround(gltf.scene);
@@ -701,7 +706,8 @@ function createThreeSurveyLayer(id: string, model: Model): maplibregl.CustomLaye
             map.triggerRepaint();
           },
           undefined,
-          () => {
+          (error) => {
+            console.error("ODM GLB failed to load", error);
             scene.add(makeDraftBox(dims));
           },
         );
