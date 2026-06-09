@@ -701,38 +701,23 @@ function createThreeSurveyLayer(id: string, model: Model): maplibregl.CustomLaye
         gltfLoader.load(
           model.assetUrl,
           (gltf) => {
-            centerObjectOnGround(gltf.scene);
+            fitObjectToSurveyFootprint(gltf.scene, dims);
             scene.add(gltf.scene);
             map.triggerRepaint();
           },
           undefined,
           (error) => {
             console.error("ODM GLB failed to load", error);
-            scene.add(makeDraftBox(dims));
+            const objUrl = model.assetUrl?.replace(/\.glb(\?.*)?$/i, ".obj$1");
+            if (objUrl && objUrl !== model.assetUrl) {
+              loadObjModel(objUrl, dims, scene, map);
+            } else {
+              scene.add(makeDraftBox(dims));
+            }
           },
         );
       } else if (model.assetUrl && model.assetType === "obj") {
-        new OBJLoader().load(
-          model.assetUrl,
-          (object) => {
-            object.traverse((child) => {
-              if (child instanceof THREE.Mesh) {
-                child.material = new THREE.MeshStandardMaterial({
-                  color: "#ef4444",
-                  roughness: 0.75,
-                  metalness: 0.05,
-                });
-              }
-            });
-            centerObjectOnGround(object);
-            scene.add(object);
-            map.triggerRepaint();
-          },
-          undefined,
-          () => {
-            scene.add(makeDraftBox(dims));
-          },
-        );
+        loadObjModel(model.assetUrl, dims, scene, map);
       } else {
         scene.add(makeDraftBox(dims));
       }
@@ -761,6 +746,36 @@ function createThreeSurveyLayer(id: string, model: Model): maplibregl.CustomLaye
   };
 }
 
+function loadObjModel(
+  url: string,
+  dims: { length: number; width: number; height: number },
+  scene: THREE.Scene,
+  map: maplibregl.Map,
+) {
+  new OBJLoader().load(
+    url,
+    (object) => {
+      object.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.material = new THREE.MeshStandardMaterial({
+            color: "#d1d5db",
+            roughness: 0.85,
+            metalness: 0.02,
+          });
+        }
+      });
+      fitObjectToSurveyFootprint(object, dims);
+      scene.add(object);
+      map.triggerRepaint();
+    },
+    undefined,
+    (error) => {
+      console.error("ODM OBJ failed to load", error);
+      scene.add(makeDraftBox(dims));
+    },
+  );
+}
+
 function makeDraftBox(dims: { length: number; width: number; height: number }) {
   const geometry = new THREE.BoxGeometry(dims.width, dims.length, dims.height);
   geometry.translate(0, 0, dims.height / 2);
@@ -779,6 +794,18 @@ function makeDraftBox(dims: { length: number; width: number; height: number }) {
   group.add(mesh);
   group.add(edges);
   return group;
+}
+
+function fitObjectToSurveyFootprint(object: THREE.Object3D, dims: { length: number; width: number; height: number }) {
+  centerObjectOnGround(object);
+  const bounds = new THREE.Box3().setFromObject(object);
+  const size = bounds.getSize(new THREE.Vector3());
+  const currentMax = Math.max(size.x, size.y, size.z);
+  const targetMax = Math.max(dims.length, dims.width, dims.height);
+  if (Number.isFinite(currentMax) && currentMax > 0 && Number.isFinite(targetMax) && targetMax > 0) {
+    object.scale.multiplyScalar(targetMax / currentMax);
+    centerObjectOnGround(object);
+  }
 }
 
 function centerObjectOnGround(object: THREE.Object3D) {
