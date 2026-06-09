@@ -352,13 +352,22 @@ async function runNodeOdmJob(scanId, imagePaths, outputDir) {
 
   let info = created;
   let completed = false;
-  for (let attempt = 0; attempt < 720; attempt += 1) {
+  for (let attempt = 0; attempt < 1440; attempt += 1) {
     await delay(5000);
     const infoResponse = await fetch(`${nodeOdmUrl}/task/${taskId}/info`);
     if (!infoResponse.ok) continue;
     info = await infoResponse.json();
-    const runningProgress = typeof info.runningProgress === "number" ? info.runningProgress : info.running_progress;
-    const progress = Math.min(95, 45 + Math.round(Number(runningProgress || 0) * 45));
+    const runningProgress =
+      typeof info.runningProgress === "number"
+        ? info.runningProgress
+        : typeof info.running_progress === "number"
+          ? info.running_progress
+          : info.progress;
+    const normalizedProgress = Number(runningProgress || 0);
+    const progress = Math.min(
+      95,
+      45 + Math.round((normalizedProgress > 1 ? normalizedProgress / 100 : normalizedProgress) * 45),
+    );
     await prisma.scan.update({ where: { id: scanId }, data: { progress } });
     if (Number(info.status?.code || info.status) === 40) {
       completed = true;

@@ -436,7 +436,7 @@ function ScanProperty() {
     const scan = await response.json();
     setStatus("Reconstructing");
     setNote("ODM job started. Large properties can take a while; the scan also appears under View Scans.");
-    const ready = await waitForScan(scan.id, 900);
+    const ready = await waitForScan(scan.id, 3600);
     if (ready.status === "failed") throw new Error(ready.error_message || "ODM reconstruction failed");
     const modelResponse = await fetch(`/api/scans/${ready.id}/model`);
     if (!modelResponse.ok) throw new Error("Model is not ready");
